@@ -5,9 +5,9 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
--- Mesafe Ayarları (Normal: 1.5 stud, Spam ve Sırayla: Tam arkası 1.0 stud)
-local NORMAL_OFFSET = CFrame.new(0, 0, 1.5)
-local SPAM_OFFSET = CFrame.new(0, 0, 1.0)
+-- Mesafe Ayarları
+local NORMAL_OFFSET = CFrame.new(0, 0, 1.5)  -- Normal ışınlanma için 1.5 stud
+local SPAM_OFFSET = CFrame.new(0, 0, 1.0)    -- Spam ve Sırayla için tam arkası
 
 -- CoreGui İzin Kontrolü (Tam Güvenli)
 local parentContainer = LocalPlayer:WaitForChild("PlayerGui")
@@ -38,7 +38,7 @@ local spamListConnections = {}
 local isDestroying = false
 local spamHeartbeatConnection = nil
 
--- UI Güncelleme Fonksiyonları (Önceden tanımlandı)
+-- UI Güncelleme Fonksiyonları
 local updateSpamToggleUI, updateCycleToggleUI
 
 -- ScreenGui Oluşturma
@@ -562,7 +562,7 @@ local function performTeleport(targetPlayer, offsetCFrame)
     return false
 end
 
--- Normal Işınlanma Butonu
+-- Normal Işınlanma Butonu (Tamamen bağımsız)
 bindClick(tpButton, function()
     if selectedNormalPlayer then
         if not performTeleport(selectedNormalPlayer, NORMAL_OFFSET) then
@@ -572,7 +572,7 @@ bindClick(tpButton, function()
     end
 end, false)
 
--- Toggle UI Tanımları
+-- UI Güncelleme Fonksiyonları
 updateSpamToggleUI = function()
     if spamActive then
         spamToggleButton.Text = "Spam Işınlanma: AÇIK"
@@ -593,13 +593,14 @@ updateCycleToggleUI = function()
     end
 end
 
--- Tekil Spam Toggle Butonu (Mutual Exclusion)
+-- Karşılıklı Kilitli Spam Toggle
 bindClick(spamToggleButton, function()
     if not selectedSpamPlayer then
         spamToggleButton.Text = "Önce Oyuncu Seç!"
         task.delay(1, function() updateSpamToggleUI() end)
         return
     end
+    
     spamActive = not spamActive
     if spamActive then
         cycleActive = false
@@ -609,7 +610,7 @@ bindClick(spamToggleButton, function()
     updateSpamToggleUI()
 end, false)
 
--- Herkese Sırayla Işınlanma Toggle Butonu (Mutual Exclusion)
+-- Karşılıklı Kilitli Sırayla Toggle
 bindClick(cycleToggleButton, function()
     cycleActive = not cycleActive
     if cycleActive then
@@ -622,7 +623,7 @@ bindClick(cycleToggleButton, function()
     updateCycleToggleUI()
 end, false)
 
--- Spam / Sırayla Işınlanma Loop (Heartbeat ile kesintisiz tam arkasında takip)
+-- Spam / Sırayla Işınlanma Loop (Heartbeat)
 spamHeartbeatConnection = RunService.Heartbeat:Connect(function()
     if spamActive and selectedSpamPlayer then
         performTeleport(selectedSpamPlayer, SPAM_OFFSET)
@@ -631,8 +632,9 @@ spamHeartbeatConnection = RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Herkese Sırayla 5 Saniyede Bir Oyuncu Değiştirme Döngüsü
+-- Herkese Sırayla Akıllı Döngü (Ölü veya Yüklenmemiş Oyuncularda Takılmaz)
 task.spawn(function()
+    local currentIndex = 1
     while screenGui and screenGui.Parent do
         if cycleActive then
             local players = Players:GetPlayers()
@@ -644,17 +646,31 @@ task.spawn(function()
             end
 
             if #validPlayers > 0 then
-                for i = 1, #validPlayers do
-                    if not cycleActive or not screenGui or not screenGui.Parent then break end
-                    currentCycleTarget = validPlayers[i]
-                    
+                if currentIndex > #validPlayers then
+                    currentIndex = 1
+                end
+                local target = validPlayers[currentIndex]
+                
+                -- Karakteri yüklü mü kontrol et
+                local targetChar = target.Character
+                local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+                local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
+
+                if targetRoot and targetHum and targetHum.Health > 0 then
+                    currentCycleTarget = target
                     local elapsed = 0
-                    while elapsed < 5 do
-                        if not cycleActive or not screenGui or not screenGui.Parent then break end
-                        task.wait(0.5)
-                        elapsed = elapsed + 0.5
-                        if not currentCycleTarget:IsDescendantOf(Players) then break end
+                    while elapsed < 5 and cycleActive and screenGui and screenGui.Parent do
+                        if not target:IsDescendantOf(Players) or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then
+                            break
+                        end
+                        task.wait(0.2)
+                        elapsed = elapsed + 0.2
                     end
+                    currentIndex = currentIndex + 1
+                else
+                    -- Karakter yoksa/ölüyse beklemeden hemen sonraki oyuncuya geç
+                    currentIndex = currentIndex + 1
+                    task.wait(0.1)
                 end
             else
                 currentCycleTarget = nil
@@ -662,7 +678,8 @@ task.spawn(function()
             end
         else
             currentCycleTarget = nil
-            task.wait(0.5)
+            currentIndex = 1
+            task.wait(0.2)
         end
     end
 end)
