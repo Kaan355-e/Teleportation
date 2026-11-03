@@ -7,7 +7,7 @@ local LocalPlayer = Players.LocalPlayer
 
 -- Mesafe Ayarları
 local NORMAL_OFFSET = CFrame.new(0, 0, 1.5)  -- Normal ışınlanma için 1.5 stud
-local SPAM_OFFSET = CFrame.new(0, 0, 1.0)    -- Spam ve Sırayla için tam arkası
+local SPAM_OFFSET = CFrame.new(0, 0, 1.0)    -- Spam ve Sırayla için tam arkası (1.0 stud)
 
 -- CoreGui İzin Kontrolü (Tam Güvenli)
 local parentContainer = LocalPlayer:WaitForChild("PlayerGui")
@@ -86,7 +86,7 @@ local function destroyGui()
     end
 end
 
--- Akıllı Sürükleme Mantığı
+-- Akıllı ve Sızıntısız Sürükleme Mantığı
 local function makeSmartDraggable(triggerObject, targetObject, onClick)
     targetObject = targetObject or triggerObject
     local dragging = false
@@ -111,7 +111,6 @@ local function makeSmartDraggable(triggerObject, targetObject, onClick)
                     end
                 end
             end)
-            table.insert(connections, connEnded)
         end
     end)
     table.insert(connections, connBegan)
@@ -554,14 +553,15 @@ local function performTeleport(targetPlayer, offsetCFrame)
     local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
 
     if targetRoot and targetHum and targetHum.Health > 0 then
-        -- Yürüme animasyonunu bozmamak için sadece konumu sabitliyoruz, hızı sıfırlamıyoruz
+        myRoot.AssemblyLinearVelocity = Vector3.zero
+        myRoot.AssemblyAngularVelocity = Vector3.zero
         myRoot.CFrame = targetRoot.CFrame * offsetCFrame
         return true
     end
     return false
 end
 
--- Normal Işınlanma Butonu (Tamamen bağımsız)
+-- Normal Işınlanma Butonu
 bindClick(tpButton, function()
     if selectedNormalPlayer then
         if not performTeleport(selectedNormalPlayer, NORMAL_OFFSET) then
@@ -631,7 +631,7 @@ spamHeartbeatConnection = RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Herkese Sırayla Akıllı Döngü (Ölü veya Yüklenmemiş Oyuncularda Takılmaz)
+-- Herkese Sırayla Akıllı Döngü
 task.spawn(function()
     local currentIndex = 1
     while screenGui and screenGui.Parent do
@@ -650,7 +650,6 @@ task.spawn(function()
                 end
                 local target = validPlayers[currentIndex]
                 
-                -- Karakteri yüklü mü kontrol et
                 local targetChar = target.Character
                 local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
                 local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
