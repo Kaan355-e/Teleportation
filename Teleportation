@@ -5,11 +5,11 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
--- Mesafe Ayarları
-local NORMAL_OFFSET = CFrame.new(0, 0, 1.5)  -- Normal ışınlanma için 1.5 stud
-local SPAM_OFFSET = CFrame.new(0, 0, 1.0)    -- Spam ve Sırayla için tam arkası (1.0 stud)
+-- Mesafe Sabitleri
+local NORMAL_OFFSET = CFrame.new(0, 0, 1.5)
+local SPAM_OFFSET = CFrame.new(0, 0, 1.0)
 
--- CoreGui İzin Kontrolü (Tam Güvenli)
+-- CoreGui Güvenlik ve İzin Kontrolü
 local parentContainer = LocalPlayer:WaitForChild("PlayerGui")
 pcall(function()
     local testFolder = Instance.new("Folder")
@@ -18,12 +18,12 @@ pcall(function()
     parentContainer = CoreGui
 end)
 
--- Eski GUI varsa temizle
+-- Eski GUI Temizliği
 if parentContainer:FindFirstChild("PlayerListGui") then
     parentContainer.PlayerListGui:Destroy()
 end
 
--- Değişkenler & Bağlantılar
+-- Değişkenler
 local selectedNormalPlayer = nil
 local selectedSpamPlayer = nil
 local spamActive = false
@@ -38,7 +38,6 @@ local spamListConnections = {}
 local isDestroying = false
 local spamHeartbeatConnection = nil
 
--- UI Güncelleme Fonksiyonları
 local updateSpamToggleUI, updateCycleToggleUI
 
 -- ScreenGui Oluşturma
@@ -47,21 +46,13 @@ screenGui.Name = "PlayerListGui"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = parentContainer
 
--- Bellek Temizlik Fonksiyonları
-local function clearListConnections()
-    for i = 1, #listConnections do
-        local conn = listConnections[i]
+-- Temizlik Fonksiyonları
+local function clearConnections(tbl)
+    for i = 1, #tbl do
+        local conn = tbl[i]
         if conn and conn.Connected then conn:Disconnect() end
     end
-    table.clear(listConnections)
-end
-
-local function clearSpamListConnections()
-    for i = 1, #spamListConnections do
-        local conn = spamListConnections[i]
-        if conn and conn.Connected then conn:Disconnect() end
-    end
-    table.clear(spamListConnections)
+    table.clear(tbl)
 end
 
 local function destroyGui()
@@ -73,31 +64,23 @@ local function destroyGui()
         spamHeartbeatConnection = nil
     end
 
-    clearListConnections()
-    clearSpamListConnections()
-    for i = 1, #connections do
-        local conn = connections[i]
-        if conn and conn.Connected then conn:Disconnect() end
-    end
-    table.clear(connections)
+    clearConnections(listConnections)
+    clearConnections(spamListConnections)
+    clearConnections(connections)
 
     if screenGui and screenGui.Parent then
         screenGui:Destroy()
     end
 end
 
--- Akıllı ve Sızıntısız Sürükleme Mantığı
+-- Sürükleme Sistemi
 local function makeSmartDraggable(triggerObject, targetObject, onClick)
     targetObject = targetObject or triggerObject
-    local dragging = false
-    local dragStart = Vector3.zero
-    local startPos = UDim2.new()
-    local hasMoved = false
+    local dragging, dragStart, startPos, hasMoved = false, Vector3.zero, UDim2.new(), false
 
     local connBegan = triggerObject.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            hasMoved = false
+            dragging, hasMoved = true, false
             dragStart = input.Position
             startPos = targetObject.Position
 
@@ -106,9 +89,7 @@ local function makeSmartDraggable(triggerObject, targetObject, onClick)
                 if endInput.UserInputType == input.UserInputType then
                     dragging = false
                     if connEnded then connEnded:Disconnect() end
-                    if not hasMoved and onClick then
-                        onClick()
-                    end
+                    if not hasMoved and onClick then onClick() end
                 end
             end)
         end
@@ -118,21 +99,17 @@ local function makeSmartDraggable(triggerObject, targetObject, onClick)
     local connChanged = UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
-            if delta.Magnitude > 5 then
-                hasMoved = true
-            end
+            if delta.Magnitude > 5 then hasMoved = true end
             targetObject.Position = UDim2.new(
-                startPos.X.Scale, 
-                startPos.X.Offset + delta.X, 
-                startPos.Y.Scale, 
-                startPos.Y.Offset + delta.Y
+                startPos.X.Scale, startPos.X.Offset + delta.X, 
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
             )
         end
     end)
     table.insert(connections, connChanged)
 end
 
--- Güvenli Tıklama Bağlayıcı
+-- Tıklama Bağlayıcı
 local function bindClick(button, callback, targetTable)
     local startPos = Vector2.zero
     local connBegan = button.InputBegan:Connect(function(input)
@@ -144,9 +121,7 @@ local function bindClick(button, callback, targetTable)
     local connEnded = button.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             local endPos = Vector2.new(input.Position.X, input.Position.Y)
-            if (endPos - startPos).Magnitude < 6 then
-                callback()
-            end
+            if (endPos - startPos).Magnitude < 6 then callback() end
         end
     end)
 
@@ -162,8 +137,8 @@ local function bindClick(button, callback, targetTable)
     end
 end
 
--- Sol Kenardaki Minik Daire (Aç/Kapa)
-local openCloseBtn = Instance.new("TextButton")
+-- Arayüz Elemanları
+local openCloseBtn = Instance.new("TextButton", screenGui)
 openCloseBtn.Name = "OpenCloseButton"
 openCloseBtn.Size = UDim2.new(0, 38, 0, 38)
 openCloseBtn.Position = UDim2.new(0, 15, 0.5, -19)
@@ -174,117 +149,89 @@ openCloseBtn.Font = Enum.Font.SourceSansBold
 openCloseBtn.TextSize = 20
 openCloseBtn.BorderSizePixel = 0
 openCloseBtn.Active = true
-openCloseBtn.Parent = screenGui
 
-local btnCorner = Instance.new("UICorner")
-btnCorner.CornerRadius = UDim.new(1, 0)
-btnCorner.Parent = openCloseBtn
+Instance.new("UICorner", openCloseBtn).CornerRadius = UDim.new(1, 0)
 
--- Ana Çerçeve (Main Frame)
-local mainFrame = Instance.new("Frame")
+local mainFrame = Instance.new("Frame", screenGui)
 mainFrame.Name = "MainFrame"
 mainFrame.Size = UDim2.new(0, 240, 0, 290)
 mainFrame.Position = UDim2.new(0.1, 0, 0.2, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
-mainFrame.Parent = screenGui
 
--- Sürükleme Bağlantıları
 makeSmartDraggable(mainFrame, mainFrame, nil)
-makeSmartDraggable(openCloseBtn, openCloseBtn, function()
-    mainFrame.Visible = not mainFrame.Visible
-end)
+makeSmartDraggable(openCloseBtn, openCloseBtn, function() mainFrame.Visible = not mainFrame.Visible end)
 
--- Üst Bar Container
-local topBar = Instance.new("Frame")
+local topBar = Instance.new("Frame", mainFrame)
 topBar.Size = UDim2.new(0.77, 0, 0, 30)
 topBar.Position = UDim2.new(0.02, 0, 0, 0)
 topBar.BackgroundTransparency = 1
-topBar.Parent = mainFrame
 
--- Sekme 1: Normal TP
-local tabNormalBtn = Instance.new("TextButton")
-tabNormalBtn.Size = UDim2.new(0.32, 0, 0, 24)
-tabNormalBtn.Position = UDim2.new(0, 0, 0, 3)
-tabNormalBtn.Text = "Normal"
+local function createTabButton(posX, text)
+    local btn = Instance.new("TextButton", topBar)
+    btn.Size = UDim2.new(0.32, 0, 0, 24)
+    btn.Position = UDim2.new(posX, 0, 0, 3)
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(180, 180, 180)
+    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    btn.BorderSizePixel = 0
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 12
+    return btn
+end
+
+local tabNormalBtn = createTabButton(0, "Normal")
 tabNormalBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 tabNormalBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-tabNormalBtn.BorderSizePixel = 0
-tabNormalBtn.Font = Enum.Font.SourceSansBold
-tabNormalBtn.TextSize = 12
-tabNormalBtn.Parent = topBar
 
--- Sekme 2: Spam TP
-local tabSpamBtn = Instance.new("TextButton")
-tabSpamBtn.Size = UDim2.new(0.32, 0, 0, 24)
-tabSpamBtn.Position = UDim2.new(0.34, 0, 0, 3)
-tabSpamBtn.Text = "Spam"
-tabSpamBtn.TextColor3 = Color3.fromRGB(180, 180, 180)
-tabSpamBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-tabSpamBtn.BorderSizePixel = 0
-tabSpamBtn.Font = Enum.Font.SourceSansBold
-tabSpamBtn.TextSize = 12
-tabSpamBtn.Parent = topBar
+local tabSpamBtn = createTabButton(0.34, "Spam")
+local tabSettingsBtn = createTabButton(0.68, "Ayarlar")
 
--- Sekme 3: Ayarlar
-local tabSettingsBtn = Instance.new("TextButton")
-tabSettingsBtn.Size = UDim2.new(0.32, 0, 0, 24)
-tabSettingsBtn.Position = UDim2.new(0.68, 0, 0, 3)
-tabSettingsBtn.Text = "Ayarlar"
-tabSettingsBtn.TextColor3 = Color3.fromRGB(180, 180, 180)
-tabSettingsBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-tabSettingsBtn.BorderSizePixel = 0
-tabSettingsBtn.Font = Enum.Font.SourceSansBold
-tabSettingsBtn.TextSize = 12
-tabSettingsBtn.Parent = topBar
-
--- Küçültme (-) Butonu
-local toggleButton = Instance.new("TextButton")
+local toggleButton = Instance.new("TextButton", mainFrame)
 toggleButton.Size = UDim2.new(0.18, 0, 0, 24)
 toggleButton.Position = UDim2.new(0.80, 0, 0, 3)
 toggleButton.Text = "-"
 toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 toggleButton.BorderSizePixel = 0
-toggleButton.Parent = mainFrame
 
--- Ayırıcı Çizgi
-local divider = Instance.new("Frame")
-divider.Name = "Divider"
+local divider = Instance.new("Frame", mainFrame)
 divider.Size = UDim2.new(1, 0, 0, 2)
 divider.Position = UDim2.new(0, 0, 0, 30)
 divider.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
 divider.BorderSizePixel = 0
-divider.Parent = mainFrame
 
----------------------------------------------------------
--- 1. SEKME İÇERİĞİ (NORMAL IŞINLANMA)
----------------------------------------------------------
-local normalTabFrame = Instance.new("Frame")
-normalTabFrame.Name = "NormalTabFrame"
-normalTabFrame.Size = UDim2.new(1, 0, 1, -30)
-normalTabFrame.Position = UDim2.new(0, 0, 0, 30)
-normalTabFrame.BackgroundTransparency = 1
-normalTabFrame.Parent = mainFrame
+-- Sekme Pencereleri
+local function createTabFrame()
+    local f = Instance.new("Frame", mainFrame)
+    f.Size = UDim2.new(1, 0, 1, -30)
+    f.Position = UDim2.new(0, 0, 0, 30)
+    f.BackgroundTransparency = 1
+    f.Visible = false
+    return f
+end
 
-local listFrame = Instance.new("ScrollingFrame")
-listFrame.Name = "ListFrame"
+local normalTabFrame = createTabFrame()
+normalTabFrame.Visible = true
+
+local spamTabFrame = createTabFrame()
+local settingsTabFrame = createTabFrame()
+
+-- Normal Sekme İçeriği
+local listFrame = Instance.new("ScrollingFrame", normalTabFrame)
 listFrame.Size = UDim2.new(1, 0, 1, -42)
 listFrame.Position = UDim2.new(0, 0, 0, 2)
 listFrame.BackgroundTransparency = 1
 listFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 listFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 listFrame.ScrollBarThickness = 4
-listFrame.Parent = normalTabFrame
 
-local uiListLayout = Instance.new("UIListLayout")
-uiListLayout.Parent = listFrame
+local uiListLayout = Instance.new("UIListLayout", listFrame)
 uiListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 uiListLayout.Padding = UDim.new(0, 2)
 
-local tpButton = Instance.new("TextButton")
-tpButton.Name = "TeleportButton"
+local tpButton = Instance.new("TextButton", normalTabFrame)
 tpButton.Size = UDim2.new(0.9, 0, 0, 30)
 tpButton.Position = UDim2.new(0.05, 0, 1, -35)
 tpButton.Text = "Işınlan"
@@ -293,21 +240,9 @@ tpButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
 tpButton.BorderSizePixel = 0
 tpButton.Font = Enum.Font.SourceSansBold
 tpButton.TextSize = 15
-tpButton.Parent = normalTabFrame
 
----------------------------------------------------------
--- 2. SEKME İÇERİĞİ (SPAM & SIRAYLA IŞINLANMA)
----------------------------------------------------------
-local spamTabFrame = Instance.new("Frame")
-spamTabFrame.Name = "SpamTabFrame"
-spamTabFrame.Size = UDim2.new(1, 0, 1, -30)
-spamTabFrame.Position = UDim2.new(0, 0, 0, 30)
-spamTabFrame.BackgroundTransparency = 1
-spamTabFrame.Visible = false
-spamTabFrame.Parent = mainFrame
-
-local spamToggleButton = Instance.new("TextButton")
-spamToggleButton.Name = "SpamToggleButton"
+-- Spam Sekme İçeriği
+local spamToggleButton = Instance.new("TextButton", spamTabFrame)
 spamToggleButton.Size = UDim2.new(0.9, 0, 0, 26)
 spamToggleButton.Position = UDim2.new(0.05, 0, 0, 4)
 spamToggleButton.Text = "Spam Işınlanma: KAPALI"
@@ -316,14 +251,9 @@ spamToggleButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
 spamToggleButton.BorderSizePixel = 0
 spamToggleButton.Font = Enum.Font.SourceSansBold
 spamToggleButton.TextSize = 12
-spamToggleButton.Parent = spamTabFrame
+Instance.new("UICorner", spamToggleButton).CornerRadius = UDim.new(0, 4)
 
-local spamToggleCorner = Instance.new("UICorner")
-spamToggleCorner.CornerRadius = UDim.new(0, 4)
-spamToggleCorner.Parent = spamToggleButton
-
-local cycleToggleButton = Instance.new("TextButton")
-cycleToggleButton.Name = "CycleToggleButton"
+local cycleToggleButton = Instance.new("TextButton", spamTabFrame)
 cycleToggleButton.Size = UDim2.new(0.9, 0, 0, 26)
 cycleToggleButton.Position = UDim2.new(0.05, 0, 0, 33)
 cycleToggleButton.Text = "Herkese Sırayla: KAPALI"
@@ -332,40 +262,22 @@ cycleToggleButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
 cycleToggleButton.BorderSizePixel = 0
 cycleToggleButton.Font = Enum.Font.SourceSansBold
 cycleToggleButton.TextSize = 12
-cycleToggleButton.Parent = spamTabFrame
+Instance.new("UICorner", cycleToggleButton).CornerRadius = UDim.new(0, 4)
 
-local cycleToggleCorner = Instance.new("UICorner")
-cycleToggleCorner.CornerRadius = UDim.new(0, 4)
-cycleToggleCorner.Parent = cycleToggleButton
-
-local spamListFrame = Instance.new("ScrollingFrame")
-spamListFrame.Name = "SpamListFrame"
+local spamListFrame = Instance.new("ScrollingFrame", spamTabFrame)
 spamListFrame.Size = UDim2.new(1, 0, 1, -68)
 spamListFrame.Position = UDim2.new(0, 0, 0, 64)
 spamListFrame.BackgroundTransparency = 1
 spamListFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 spamListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 spamListFrame.ScrollBarThickness = 4
-spamListFrame.Parent = spamTabFrame
 
-local spamUiListLayout = Instance.new("UIListLayout")
-spamUiListLayout.Parent = spamListFrame
+local spamUiListLayout = Instance.new("UIListLayout", spamListFrame)
 spamUiListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 spamUiListLayout.Padding = UDim.new(0, 2)
 
----------------------------------------------------------
--- 3. SEKME İÇERİĞİ (AYARLAR)
----------------------------------------------------------
-local settingsTabFrame = Instance.new("Frame")
-settingsTabFrame.Name = "SettingsTabFrame"
-settingsTabFrame.Size = UDim2.new(1, 0, 1, -30)
-settingsTabFrame.Position = UDim2.new(0, 0, 0, 30)
-settingsTabFrame.BackgroundTransparency = 1
-settingsTabFrame.Visible = false
-settingsTabFrame.Parent = mainFrame
-
-local deleteGuiBtn = Instance.new("TextButton")
-deleteGuiBtn.Name = "DeleteGuiButton"
+-- Ayarlar Sekme İçeriği
+local deleteGuiBtn = Instance.new("TextButton", settingsTabFrame)
 deleteGuiBtn.Size = UDim2.new(0.9, 0, 0, 32)
 deleteGuiBtn.Position = UDim2.new(0.05, 0, 0.1, 0)
 deleteGuiBtn.Text = "Menüyü Sil"
@@ -374,17 +286,20 @@ deleteGuiBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
 deleteGuiBtn.BorderSizePixel = 0
 deleteGuiBtn.Font = Enum.Font.SourceSansBold
 deleteGuiBtn.TextSize = 15
-deleteGuiBtn.Parent = settingsTabFrame
+Instance.new("UICorner", deleteGuiBtn).CornerRadius = UDim.new(0, 4)
 
-local deleteBtnCorner = Instance.new("UICorner")
-deleteBtnCorner.CornerRadius = UDim.new(0, 4)
-deleteBtnCorner.Parent = deleteGuiBtn
+local versionLabel = Instance.new("TextLabel", settingsTabFrame)
+versionLabel.Size = UDim2.new(0.9, 0, 0, 20)
+versionLabel.Position = UDim2.new(0.05, 0, 1, -25)
+versionLabel.BackgroundTransparency = 1
+versionLabel.Text = "Sürüm: v1.2"
+versionLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
+versionLabel.Font = Enum.Font.SourceSansItalic
+versionLabel.TextSize = 13
+versionLabel.TextXAlignment = Enum.TextXAlignment.Center
 
----------------------------------------------------------
--- SEKME GEÇİŞLERİ VE KÜÇÜLTME MANTIĞI
----------------------------------------------------------
+-- Sekme Yönetimi
 local activeTabName = "normal"
-
 local function updateTabVisuals(activeTab)
     activeTabName = activeTab
     normalTabFrame.Visible = (activeTab == "normal")
@@ -408,140 +323,78 @@ makeSmartDraggable(tabSettingsBtn, mainFrame, function() updateTabVisuals("setti
 local isMinimized = false
 makeSmartDraggable(toggleButton, mainFrame, function()
     isMinimized = not isMinimized
-    if isMinimized then
-        topBar.Visible = false
-        normalTabFrame.Visible = false
-        spamTabFrame.Visible = false
-        settingsTabFrame.Visible = false
-        divider.Visible = false
-        mainFrame.Size = UDim2.new(0, 240, 0, 30)
-        toggleButton.Text = "+"
-    else
-        topBar.Visible = true
-        divider.Visible = true
-        updateTabVisuals(activeTabName)
-        mainFrame.Size = UDim2.new(0, 240, 0, 290)
-        toggleButton.Text = "-"
-    end
+    topBar.Visible = not isMinimized
+    normalTabFrame.Visible = not isMinimized and (activeTabName == "normal")
+    spamTabFrame.Visible = not isMinimized and (activeTabName == "spam")
+    settingsTabFrame.Visible = not isMinimized and (activeTabName == "settings")
+    divider.Visible = not isMinimized
+    mainFrame.Size = isMinimized and UDim2.new(0, 240, 0, 30) or UDim2.new(0, 240, 0, 290)
+    toggleButton.Text = isMinimized and "+" or "-"
 end)
 
 bindClick(deleteGuiBtn, function() destroyGui() end, false)
 
----------------------------------------------------------
--- CANLI LİSTELER VE İŞLEMLER
----------------------------------------------------------
+-- Liste Güncelleme
+local function updatePlayerList(frame, selectedVar, buttonTable, clearConnFunc, isSpamList)
+    if not screenGui or not screenGui.Parent or not frame then return end
+    clearConnFunc()
 
-local function updateNormalPlayerList()
-    if not screenGui or not screenGui.Parent or not listFrame then return end
-    clearListConnections()
-
-    if selectedNormalPlayer and (not selectedNormalPlayer:IsDescendantOf(Players) or selectedNormalPlayer == LocalPlayer) then
-        selectedNormalPlayer = nil
+    if selectedVar and (not selectedVar:IsDescendantOf(Players) or selectedVar == LocalPlayer) then
+        selectedVar = nil
     end
 
-    local children = listFrame:GetChildren()
-    for i = 1, #children do
-        if children[i]:IsA("TextButton") then children[i]:Destroy() end
+    for _, child in ipairs(frame:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
     end
-    table.clear(playerButtons)
+    table.clear(buttonTable)
 
     local players = Players:GetPlayers()
-    local otherPlayersCount = #players > 0 and (#players - 1) or 0
-    tabNormalBtn.Text = "Normal (" .. otherPlayersCount .. ")"
+    if not isSpamList then
+        local count = #players > 0 and (#players - 1) or 0
+        tabNormalBtn.Text = "Normal (" .. count .. ")"
+    end
 
-    for i = 1, #players do
-        local player = players[i]
+    for _, player in ipairs(players) do
         if player ~= LocalPlayer then
-            local pBtn = Instance.new("TextButton")
+            local pBtn = Instance.new("TextButton", frame)
             pBtn.Size = UDim2.new(1, -6, 0, 25)
             pBtn.Text = "  " .. player.DisplayName .. " (@" .. player.Name .. ")"
             pBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
-            pBtn.BackgroundColor3 = (selectedNormalPlayer == player) and Color3.fromRGB(60, 90, 120) or Color3.fromRGB(40, 40, 40)
-            pBtn.BackgroundTransparency = (selectedNormalPlayer == player) and 0 or 0.6
+            pBtn.BackgroundColor3 = (selectedVar == player) and Color3.fromRGB(60, 90, 120) or Color3.fromRGB(40, 40, 40)
+            pBtn.BackgroundTransparency = (selectedVar == player) and 0 or 0.6
             pBtn.TextXAlignment = Enum.TextXAlignment.Left
             pBtn.Font = Enum.Font.SourceSans
             pBtn.TextSize = 14
             pBtn.BorderSizePixel = 0
-            pBtn.Parent = listFrame
 
             bindClick(pBtn, function()
-                selectedNormalPlayer = player
-                for p, btn in pairs(playerButtons) do
-                    if p == selectedNormalPlayer then
-                        btn.BackgroundColor3 = Color3.fromRGB(60, 90, 120)
-                        btn.BackgroundTransparency = 0
-                    else
-                        btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-                        btn.BackgroundTransparency = 0.6
-                    end
+                if isSpamList then
+                    selectedSpamPlayer = player
+                else
+                    selectedNormalPlayer = player
                 end
-            end, "list")
-
-            playerButtons[player] = pBtn
-        end
-    end
-end
-
-local function updateSpamPlayerList()
-    if not screenGui or not screenGui.Parent or not spamListFrame then return end
-    clearSpamListConnections()
-
-    if selectedSpamPlayer and (not selectedSpamPlayer:IsDescendantOf(Players) or selectedSpamPlayer == LocalPlayer) then
-        selectedSpamPlayer = nil
-        spamActive = false
-    end
-
-    local children = spamListFrame:GetChildren()
-    for i = 1, #children do
-        if children[i]:IsA("TextButton") then children[i]:Destroy() end
-    end
-    table.clear(spamButtons)
-
-    local players = Players:GetPlayers()
-    for i = 1, #players do
-        local player = players[i]
-        if player ~= LocalPlayer then
-            local pBtn = Instance.new("TextButton")
-            pBtn.Size = UDim2.new(1, -6, 0, 25)
-            pBtn.Text = "  " .. player.DisplayName .. " (@" .. player.Name .. ")"
-            pBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
-            pBtn.BackgroundColor3 = (selectedSpamPlayer == player) and Color3.fromRGB(60, 90, 120) or Color3.fromRGB(40, 40, 40)
-            pBtn.BackgroundTransparency = (selectedSpamPlayer == player) and 0 or 0.6
-            pBtn.TextXAlignment = Enum.TextXAlignment.Left
-            pBtn.Font = Enum.Font.SourceSans
-            pBtn.TextSize = 14
-            pBtn.BorderSizePixel = 0
-            pBtn.Parent = spamListFrame
-
-            bindClick(pBtn, function()
-                selectedSpamPlayer = player
-                for p, btn in pairs(spamButtons) do
-                    if p == selectedSpamPlayer then
-                        btn.BackgroundColor3 = Color3.fromRGB(60, 90, 120)
-                        btn.BackgroundTransparency = 0
-                    else
-                        btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-                        btn.BackgroundTransparency = 0.6
-                    end
+                for p, btn in pairs(buttonTable) do
+                    local isSelected = (p == player)
+                    btn.BackgroundColor3 = isSelected and Color3.fromRGB(60, 90, 120) or Color3.fromRGB(40, 40, 40)
+                    btn.BackgroundTransparency = isSelected and 0 or 0.6
                 end
-            end, "spam")
+            end, isSpamList and "spam" or "list")
 
-            spamButtons[player] = pBtn
+            buttonTable[player] = pBtn
         end
     end
 end
 
 local function updateAllLists()
     task.defer(function()
-        updateNormalPlayerList()
-        updateSpamPlayerList()
+        updatePlayerList(listFrame, selectedNormalPlayer, playerButtons, clearListConnections, false)
+        updatePlayerList(spamListFrame, selectedSpamPlayer, spamButtons, clearSpamListConnections, true)
     end)
 end
 
 -- Işınlanma Fonksiyonu
 local function performTeleport(targetPlayer, offsetCFrame)
-    if not targetPlayer or targetPlayer == LocalPlayer then return false end
-    if not targetPlayer:IsDescendantOf(Players) then return false end
+    if not targetPlayer or targetPlayer == LocalPlayer or not targetPlayer:IsDescendantOf(Players) then return false end
 
     local myChar = LocalPlayer.Character
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -561,45 +414,32 @@ local function performTeleport(targetPlayer, offsetCFrame)
     return false
 end
 
--- Normal Işınlanma Butonu
 bindClick(tpButton, function()
     if selectedNormalPlayer then
         if not performTeleport(selectedNormalPlayer, NORMAL_OFFSET) then
             selectedNormalPlayer = nil
-            updateNormalPlayerList()
+            updateAllLists()
         end
     end
 end, false)
 
--- UI Güncelleme Fonksiyonları
+-- UI Toggle Güncellemeleri
 updateSpamToggleUI = function()
-    if spamActive then
-        spamToggleButton.Text = "Spam Işınlanma: AÇIK"
-        spamToggleButton.BackgroundColor3 = Color3.fromRGB(40, 180, 60)
-    else
-        spamToggleButton.Text = "Spam Işınlanma: KAPALI"
-        spamToggleButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
-    end
+    spamToggleButton.Text = spamActive and "Spam Işınlanma: AÇIK" or "Spam Işınlanma: KAPALI"
+    spamToggleButton.BackgroundColor3 = spamActive and Color3.fromRGB(40, 180, 60) or Color3.fromRGB(180, 40, 40)
 end
 
 updateCycleToggleUI = function()
-    if cycleActive then
-        cycleToggleButton.Text = "Herkese Sırayla: AÇIK"
-        cycleToggleButton.BackgroundColor3 = Color3.fromRGB(40, 180, 60)
-    else
-        cycleToggleButton.Text = "Herkese Sırayla: KAPALI"
-        cycleToggleButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
-    end
+    cycleToggleButton.Text = cycleActive and "Herkese Sırayla: AÇIK" or "Herkese Sırayla: KAPALI"
+    cycleToggleButton.BackgroundColor3 = cycleActive and Color3.fromRGB(40, 180, 60) or Color3.fromRGB(180, 40, 40)
 end
 
--- Karşılıklı Kilitli Spam Toggle
 bindClick(spamToggleButton, function()
     if not selectedSpamPlayer then
         spamToggleButton.Text = "Önce Oyuncu Seç!"
-        task.delay(1, function() updateSpamToggleUI() end)
+        task.delay(1, updateSpamToggleUI)
         return
     end
-    
     spamActive = not spamActive
     if spamActive then
         cycleActive = false
@@ -609,7 +449,6 @@ bindClick(spamToggleButton, function()
     updateSpamToggleUI()
 end, false)
 
--- Karşılıklı Kilitli Sırayla Toggle
 bindClick(cycleToggleButton, function()
     cycleActive = not cycleActive
     if cycleActive then
@@ -622,7 +461,7 @@ bindClick(cycleToggleButton, function()
     updateCycleToggleUI()
 end, false)
 
--- Spam / Sırayla Işınlanma Loop (Heartbeat)
+-- Heartbeat Loop
 spamHeartbeatConnection = RunService.Heartbeat:Connect(function()
     if spamActive and selectedSpamPlayer then
         performTeleport(selectedSpamPlayer, SPAM_OFFSET)
@@ -631,7 +470,7 @@ spamHeartbeatConnection = RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Herkese Sırayla Akıllı Döngü
+-- Sıralı Döngü (Cycle)
 task.spawn(function()
     local currentIndex = 1
     while screenGui and screenGui.Parent do
@@ -639,15 +478,11 @@ task.spawn(function()
             local players = Players:GetPlayers()
             local validPlayers = {}
             for i = 1, #players do
-                if players[i] ~= LocalPlayer then
-                    table.insert(validPlayers, players[i])
-                end
+                if players[i] ~= LocalPlayer then table.insert(validPlayers, players[i]) end
             end
 
             if #validPlayers > 0 then
-                if currentIndex > #validPlayers then
-                    currentIndex = 1
-                end
+                if currentIndex > #validPlayers then currentIndex = 1 end
                 local target = validPlayers[currentIndex]
                 
                 local targetChar = target.Character
@@ -681,33 +516,18 @@ task.spawn(function()
     end
 end)
 
----------------------------------------------------------
--- CANLI OLAY DİNLEYİCİLERİ
----------------------------------------------------------
-
-local playerAddedConn = Players.PlayerAdded:Connect(function()
-    updateAllLists()
-end)
-
-local playerRemovingConn = Players.PlayerRemoving:Connect(function(leavingPlayer)
+-- Bağlantı Dinleyicileri
+table.insert(connections, Players.PlayerAdded:Connect(updateAllLists))
+table.insert(connections, Players.PlayerRemoving:Connect(function(leavingPlayer)
     if selectedNormalPlayer == leavingPlayer then selectedNormalPlayer = nil end
     if selectedSpamPlayer == leavingPlayer then
         selectedSpamPlayer = nil
         spamActive = false
         updateSpamToggleUI()
     end
-    if currentCycleTarget == leavingPlayer then
-        currentCycleTarget = nil
-    end
+    if currentCycleTarget == leavingPlayer then currentCycleTarget = nil end
     updateAllLists()
-end)
-
-table.insert(connections, playerAddedConn)
-table.insert(connections, playerRemovingConn)
-
-local destroyingConn = screenGui.Destroying:Connect(function()
-    destroyGui()
-end)
-table.insert(connections, destroyingConn)
+end))
+table.insert(connections, screenGui.Destroying:Connect(destroyGui))
 
 updateAllLists()
