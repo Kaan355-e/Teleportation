@@ -360,9 +360,12 @@ deleteBtnCorner.CornerRadius = UDim.new(0, 4)
 deleteBtnCorner.Parent = deleteGuiBtn
 
 ---------------------------------------------------------
--- SEKME GEÇİŞLERİ
+-- SEKME GEÇİŞLERİ VE KÜÇÜLTME MANTIĞI
 ---------------------------------------------------------
+local activeTabName = "normal"
+
 local function updateTabVisuals(activeTab)
+    activeTabName = activeTab
     normalTabFrame.Visible = (activeTab == "normal")
     spamTabFrame.Visible = (activeTab == "spam")
     settingsTabFrame.Visible = (activeTab == "settings")
@@ -385,6 +388,8 @@ local isMinimized = false
 makeSmartDraggable(toggleButton, mainFrame, function()
     isMinimized = not isMinimized
     if isMinimized then
+        -- Küçültüldüğünde her şeyi gizle (bug'ı önlemek için)
+        topBar.Visible = false
         normalTabFrame.Visible = false
         spamTabFrame.Visible = false
         settingsTabFrame.Visible = false
@@ -392,10 +397,10 @@ makeSmartDraggable(toggleButton, mainFrame, function()
         mainFrame.Size = UDim2.new(0, 240, 0, 30)
         toggleButton.Text = "+"
     else
+        -- Büyütüldüğünde üst barı ve aktif sekmeyi geri getir
+        topBar.Visible = true
         divider.Visible = true
-        if normalTabFrame.Visible then updateTabVisuals("normal")
-        elseif spamTabFrame.Visible then updateTabVisuals("spam")
-        else updateTabVisuals("settings") end
+        updateTabVisuals(activeTabName)
         mainFrame.Size = UDim2.new(0, 240, 0, 290)
         toggleButton.Text = "-"
     end
@@ -404,7 +409,7 @@ end)
 bindClick(deleteGuiBtn, function() destroyGui() end, false)
 
 ---------------------------------------------------------
--- CANLI LİSTELER VE İŞLEMLER (OPTIMIZED)
+-- CANLI LİSTELER VE İŞLEMLER
 ---------------------------------------------------------
 
 local function updateNormalPlayerList()
@@ -565,7 +570,7 @@ bindClick(spamToggleButton, function()
     updateSpamToggleUI()
 end, false)
 
--- Optimize Edilmiş Ultra Hızlı Spam Dinleyicisi (Heartbeat)
+-- Spam Loop
 spamHeartbeatConnection = RunService.Heartbeat:Connect(function()
     if spamActive and selectedSpamPlayer then
         if selectedSpamPlayer:IsDescendantOf(Players) then
