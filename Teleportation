@@ -5,8 +5,9 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
--- Sabitler
-local OFFSET_CFRAME = CFrame.new(0, 0, 1.5)
+-- Mesafe Ayarları
+local NORMAL_OFFSET = CFrame.new(0, 0, 1.5)  -- Normal ışınlanma için 1.5 stud
+local SPAM_OFFSET = CFrame.new(0, 0, 1.0)    -- Spam ve Sırayla için tam arkası (hassas mesafe)
 
 -- CoreGui İzin Kontrolü (Tam Güvenli)
 local parentContainer = LocalPlayer:WaitForChild("PlayerGui")
@@ -26,6 +27,7 @@ end
 local selectedNormalPlayer = nil
 local selectedSpamPlayer = nil
 local spamActive = false
+local cycleActive = false
 
 local playerButtons = {}
 local spamButtons = {}
@@ -291,7 +293,7 @@ tpButton.TextSize = 15
 tpButton.Parent = normalTabFrame
 
 ---------------------------------------------------------
--- 2. SEKME İÇERİĞİ (SPAM IŞINLANMA)
+-- 2. SEKME İÇERİĞİ (SPAM & SIRAYLA IŞINLANMA)
 ---------------------------------------------------------
 local spamTabFrame = Instance.new("Frame")
 spamTabFrame.Name = "SpamTabFrame"
@@ -303,24 +305,40 @@ spamTabFrame.Parent = mainFrame
 
 local spamToggleButton = Instance.new("TextButton")
 spamToggleButton.Name = "SpamToggleButton"
-spamToggleButton.Size = UDim2.new(0.9, 0, 0, 30)
-spamToggleButton.Position = UDim2.new(0.05, 0, 0, 5)
+spamToggleButton.Size = UDim2.new(0.9, 0, 0, 26)
+spamToggleButton.Position = UDim2.new(0.05, 0, 0, 4)
 spamToggleButton.Text = "Spam Işınlanma: KAPALI"
 spamToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 spamToggleButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
 spamToggleButton.BorderSizePixel = 0
 spamToggleButton.Font = Enum.Font.SourceSansBold
-spamToggleButton.TextSize = 13
+spamToggleButton.TextSize = 12
 spamToggleButton.Parent = spamTabFrame
 
 local spamToggleCorner = Instance.new("UICorner")
 spamToggleCorner.CornerRadius = UDim.new(0, 4)
 spamToggleCorner.Parent = spamToggleButton
 
+local cycleToggleButton = Instance.new("TextButton")
+cycleToggleButton.Name = "CycleToggleButton"
+cycleToggleButton.Size = UDim2.new(0.9, 0, 0, 26)
+cycleToggleButton.Position = UDim2.new(0.05, 0, 0, 33)
+cycleToggleButton.Text = "Herkese Sırayla: KAPALI"
+cycleToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+cycleToggleButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+cycleToggleButton.BorderSizePixel = 0
+cycleToggleButton.Font = Enum.Font.SourceSansBold
+cycleToggleButton.TextSize = 12
+cycleToggleButton.Parent = spamTabFrame
+
+local cycleToggleCorner = Instance.new("UICorner")
+cycleToggleCorner.CornerRadius = UDim.new(0, 4)
+cycleToggleCorner.Parent = cycleToggleButton
+
 local spamListFrame = Instance.new("ScrollingFrame")
 spamListFrame.Name = "SpamListFrame"
-spamListFrame.Size = UDim2.new(1, 0, 1, -45)
-spamListFrame.Position = UDim2.new(0, 0, 0, 40)
+spamListFrame.Size = UDim2.new(1, 0, 1, -68)
+spamListFrame.Position = UDim2.new(0, 0, 0, 64)
 spamListFrame.BackgroundTransparency = 1
 spamListFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 spamListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -388,7 +406,6 @@ local isMinimized = false
 makeSmartDraggable(toggleButton, mainFrame, function()
     isMinimized = not isMinimized
     if isMinimized then
-        -- Küçültüldüğünde her şeyi gizle (bug'ı önlemek için)
         topBar.Visible = false
         normalTabFrame.Visible = false
         spamTabFrame.Visible = false
@@ -397,7 +414,6 @@ makeSmartDraggable(toggleButton, mainFrame, function()
         mainFrame.Size = UDim2.new(0, 240, 0, 30)
         toggleButton.Text = "+"
     else
-        -- Büyütüldüğünde üst barı ve aktif sekmeyi geri getir
         topBar.Visible = true
         divider.Visible = true
         updateTabVisuals(activeTabName)
@@ -519,37 +535,43 @@ local function updateAllLists()
     end)
 end
 
--- Normal Işınlanma
-local function teleportToPlayer(targetPlayer)
-    if not targetPlayer or targetPlayer == LocalPlayer then return end
-    if not targetPlayer:IsDescendantOf(Players) then
-        selectedNormalPlayer = nil
-        updateNormalPlayerList()
-        return
-    end
+-- Işınlanma Fonksiyonu
+local function performTeleport(targetPlayer, offsetCFrame)
+    if not targetPlayer or targetPlayer == LocalPlayer then return false end
+    if not targetPlayer:IsDescendantOf(Players) then return false end
 
     local myChar = LocalPlayer.Character
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-    if not myRoot then return end
+    local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+    if not myRoot or not myHum or myHum.Health <= 0 then return false end
 
     local targetChar = targetPlayer.Character
     local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+    local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
 
-    if targetRoot then
-        myRoot.CFrame = targetRoot.CFrame * OFFSET_CFRAME
-    else
-        selectedNormalPlayer = nil
-        updateNormalPlayerList()
+    if targetRoot and targetHum and targetHum.Health > 0 then
+        -- Hızı sıfırla ki rest/ölüm atmasın
+        myRoot.AssemblyLinearVelocity = Vector3.zero
+        myRoot.AssemblyAngularVelocity = Vector3.zero
+        
+        -- Belirtilen mesafe kuralına göre ışınla
+        myRoot.CFrame = targetRoot.CFrame * offsetCFrame
+        return true
     end
+    return false
 end
 
+-- Normal Işınlanma Butonu (1.5 Stud)
 bindClick(tpButton, function()
     if selectedNormalPlayer then
-        teleportToPlayer(selectedNormalPlayer)
+        if not performTeleport(selectedNormalPlayer, NORMAL_OFFSET) then
+            selectedNormalPlayer = nil
+            updateNormalPlayerList()
+        end
     end
 end, false)
 
--- Spam Toggle Butonu
+-- Tekil Spam Toggle Butonu
 local function updateSpamToggleUI()
     if spamActive then
         spamToggleButton.Text = "Spam Işınlanma: AÇIK"
@@ -567,29 +589,65 @@ bindClick(spamToggleButton, function()
         return
     end
     spamActive = not spamActive
+    if spamActive then cycleActive = false end
     updateSpamToggleUI()
 end, false)
 
--- Spam Loop
+-- Herkese Sırayla Işınlanma Toggle Butonu
+local function updateCycleToggleUI()
+    if cycleActive then
+        cycleToggleButton.Text = "Herkese Sırayla: AÇIK"
+        cycleToggleButton.BackgroundColor3 = Color3.fromRGB(40, 180, 60)
+    else
+        cycleToggleButton.Text = "Herkese Sırayla: KAPALI"
+        cycleToggleButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+    end
+end
+
+bindClick(cycleToggleButton, function()
+    cycleActive = not cycleActive
+    if cycleActive then spamActive = false end
+    updateCycleToggleUI()
+end, false)
+
+-- Spam Işınlanma Loop (Tam arkası - SPAM_OFFSET: 1.0)
 spamHeartbeatConnection = RunService.Heartbeat:Connect(function()
     if spamActive and selectedSpamPlayer then
-        if selectedSpamPlayer:IsDescendantOf(Players) then
-            local myChar = LocalPlayer.Character
-            local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-            local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
-            
-            local targetChar = selectedSpamPlayer.Character
-            local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
-            local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
+        performTeleport(selectedSpamPlayer, SPAM_OFFSET)
+    end
+end)
 
-            if myRoot and targetRoot and myHum and myHum.Health > 0 and targetHum and targetHum.Health > 0 then
-                myRoot.CFrame = targetRoot.CFrame * OFFSET_CFRAME
+-- Herkese Sırayla 5 Saniyede Bir Işınlanma Döngüsü (Tam arkası - SPAM_OFFSET: 1.0)
+task.spawn(function()
+    while screenGui and screenGui.Parent do
+        if cycleActive then
+            local players = Players:GetPlayers()
+            local validPlayers = {}
+            for i = 1, #players do
+                if players[i] ~= LocalPlayer then
+                    table.insert(validPlayers, players[i])
+                end
+            end
+
+            if #validPlayers > 0 then
+                for i = 1, #validPlayers do
+                    if not cycleActive or not screenGui or not screenGui.Parent then break end
+                    local target = validPlayers[i]
+                    
+                    local elapsed = 0
+                    while elapsed < 5 do
+                        if not cycleActive or not screenGui or not screenGui.Parent then break end
+                        performTeleport(target, SPAM_OFFSET)
+                        task.wait(0.5)
+                        elapsed = elapsed + 0.5
+                        if not target:IsDescendantOf(Players) then break end
+                    end
+                end
+            else
+                task.wait(1)
             end
         else
-            selectedSpamPlayer = nil
-            spamActive = false
-            updateSpamToggleUI()
-            updateSpamPlayerList()
+            task.wait(0.5)
         end
     end
 end)
