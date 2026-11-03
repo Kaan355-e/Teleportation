@@ -5,9 +5,9 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
--- Mesafe Ayarları
-local NORMAL_OFFSET = CFrame.new(0, 0, 1.5)  -- Normal ışınlanma için 1.5 stud
-local SPAM_OFFSET = CFrame.new(0, 0, 1.0)    -- Spam ve Sırayla için tam arkası (hassas mesafe)
+-- Mesafe Ayarları (Normal: 1.5 stud, Spam ve Sırayla: Tam arkası 1.0 stud)
+local NORMAL_OFFSET = CFrame.new(0, 0, 1.5)
+local SPAM_OFFSET = CFrame.new(0, 0, 1.0)
 
 -- CoreGui İzin Kontrolü (Tam Güvenli)
 local parentContainer = LocalPlayer:WaitForChild("PlayerGui")
@@ -28,6 +28,7 @@ local selectedNormalPlayer = nil
 local selectedSpamPlayer = nil
 local spamActive = false
 local cycleActive = false
+local currentCycleTarget = nil
 
 local playerButtons = {}
 local spamButtons = {}
@@ -36,6 +37,9 @@ local listConnections = {}
 local spamListConnections = {}
 local isDestroying = false
 local spamHeartbeatConnection = nil
+
+-- UI Güncelleme Fonksiyonları (Önceden tanımlandı)
+local updateSpamToggleUI, updateCycleToggleUI
 
 -- ScreenGui Oluşturma
 local screenGui = Instance.new("ScreenGui")
@@ -550,18 +554,15 @@ local function performTeleport(targetPlayer, offsetCFrame)
     local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
 
     if targetRoot and targetHum and targetHum.Health > 0 then
-        -- Hızı sıfırla ki rest/ölüm atmasın
         myRoot.AssemblyLinearVelocity = Vector3.zero
         myRoot.AssemblyAngularVelocity = Vector3.zero
-        
-        -- Belirtilen mesafe kuralına göre ışınla
         myRoot.CFrame = targetRoot.CFrame * offsetCFrame
         return true
     end
     return false
 end
 
--- Normal Işınlanma Butonu (1.5 Stud)
+-- Normal Işınlanma Butonu
 bindClick(tpButton, function()
     if selectedNormalPlayer then
         if not performTeleport(selectedNormalPlayer, NORMAL_OFFSET) then
@@ -571,8 +572,8 @@ bindClick(tpButton, function()
     end
 end, false)
 
--- Tekil Spam Toggle Butonu
-local function updateSpamToggleUI()
+-- Toggle UI Tanımları
+updateSpamToggleUI = function()
     if spamActive then
         spamToggleButton.Text = "Spam Işınlanma: AÇIK"
         spamToggleButton.BackgroundColor3 = Color3.fromRGB(40, 180, 60)
@@ -582,19 +583,7 @@ local function updateSpamToggleUI()
     end
 end
 
-bindClick(spamToggleButton, function()
-    if not selectedSpamPlayer then
-        spamToggleButton.Text = "Önce Oyuncu Seç!"
-        task.delay(1, function() updateSpamToggleUI() end)
-        return
-    end
-    spamActive = not spamActive
-    if spamActive then cycleActive = false end
-    updateSpamToggleUI()
-end, false)
-
--- Herkese Sırayla Işınlanma Toggle Butonu
-local function updateCycleToggleUI()
+updateCycleToggleUI = function()
     if cycleActive then
         cycleToggleButton.Text = "Herkese Sırayla: AÇIK"
         cycleToggleButton.BackgroundColor3 = Color3.fromRGB(40, 180, 60)
@@ -604,20 +593,45 @@ local function updateCycleToggleUI()
     end
 end
 
+-- Tekil Spam Toggle Butonu (Mutual Exclusion)
+bindClick(spamToggleButton, function()
+    if not selectedSpamPlayer then
+        spamToggleButton.Text = "Önce Oyuncu Seç!"
+        task.delay(1, function() updateSpamToggleUI() end)
+        return
+    end
+    spamActive = not spamActive
+    if spamActive then
+        cycleActive = false
+        currentCycleTarget = nil
+        updateCycleToggleUI()
+    end
+    updateSpamToggleUI()
+end, false)
+
+-- Herkese Sırayla Işınlanma Toggle Butonu (Mutual Exclusion)
 bindClick(cycleToggleButton, function()
     cycleActive = not cycleActive
-    if cycleActive then spamActive = false end
+    if cycleActive then
+        spamActive = false
+        selectedSpamPlayer = nil
+        updateSpamToggleUI()
+    else
+        currentCycleTarget = nil
+    end
     updateCycleToggleUI()
 end, false)
 
--- Spam Işınlanma Loop (Tam arkası - SPAM_OFFSET: 1.0)
+-- Spam / Sırayla Işınlanma Loop (Heartbeat ile kesintisiz tam arkasında takip)
 spamHeartbeatConnection = RunService.Heartbeat:Connect(function()
     if spamActive and selectedSpamPlayer then
         performTeleport(selectedSpamPlayer, SPAM_OFFSET)
+    elseif cycleActive and currentCycleTarget then
+        performTeleport(currentCycleTarget, SPAM_OFFSET)
     end
 end)
 
--- Herkese Sırayla 5 Saniyede Bir Işınlanma Döngüsü (Tam arkası - SPAM_OFFSET: 1.0)
+-- Herkese Sırayla 5 Saniyede Bir Oyuncu Değiştirme Döngüsü
 task.spawn(function()
     while screenGui and screenGui.Parent do
         if cycleActive then
@@ -632,21 +646,22 @@ task.spawn(function()
             if #validPlayers > 0 then
                 for i = 1, #validPlayers do
                     if not cycleActive or not screenGui or not screenGui.Parent then break end
-                    local target = validPlayers[i]
+                    currentCycleTarget = validPlayers[i]
                     
                     local elapsed = 0
                     while elapsed < 5 do
                         if not cycleActive or not screenGui or not screenGui.Parent then break end
-                        performTeleport(target, SPAM_OFFSET)
                         task.wait(0.5)
                         elapsed = elapsed + 0.5
-                        if not target:IsDescendantOf(Players) then break end
+                        if not currentCycleTarget:IsDescendantOf(Players) then break end
                     end
                 end
             else
+                currentCycleTarget = nil
                 task.wait(1)
             end
         else
+            currentCycleTarget = nil
             task.wait(0.5)
         end
     end
@@ -666,6 +681,9 @@ local playerRemovingConn = Players.PlayerRemoving:Connect(function(leavingPlayer
         selectedSpamPlayer = nil
         spamActive = false
         updateSpamToggleUI()
+    end
+    if currentCycleTarget == leavingPlayer then
+        currentCycleTarget = nil
     end
     updateAllLists()
 end)
