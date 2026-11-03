@@ -554,8 +554,7 @@ local function performTeleport(targetPlayer, offsetCFrame)
     local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
 
     if targetRoot and targetHum and targetHum.Health > 0 then
-        myRoot.AssemblyLinearVelocity = Vector3.zero
-        myRoot.AssemblyAngularVelocity = Vector3.zero
+        -- Yürüme animasyonunu bozmamak için sadece konumu sabitliyoruz, hızı sıfırlamıyoruz
         myRoot.CFrame = targetRoot.CFrame * offsetCFrame
         return true
     end
@@ -668,7 +667,6 @@ task.spawn(function()
                     end
                     currentIndex = currentIndex + 1
                 else
-                    -- Karakter yoksa/ölüyse beklemeden hemen sonraki oyuncuya geç
                     currentIndex = currentIndex + 1
                     task.wait(0.1)
                 end
